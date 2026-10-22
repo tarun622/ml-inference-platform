@@ -1,0 +1,19 @@
+# Values for the prometheus-adapter Helm chart: exposes Prometheus series as
+# custom metrics so the HPAs can scale on queueing instead of CPU.
+#   helm upgrade --install prometheus-adapter prometheus-community/prometheus-adapter \
+#     -n monitoring -f k8s/monitoring/prometheus-adapter.yaml
+prometheus:
+  url: http://kube-prometheus-stack-prometheus.monitoring.svc
+  port: 9090
+rules:
+  custom:
+    - seriesQuery: 'nv_inference_queue_duration_us{namespace!="",pod!=""}'
+      resources: {overrides: {namespace: {resource: namespace}, pod: {resource: pod}}}
+      name: {as: "triton_queue_us_per_request"}
+      metricsQuery: |
+        sum by (<<.GroupBy>>) (rate(nv_inference_queue_duration_us{<<.LabelMatchers>>}[1m]))
+          / clamp_min(sum by (<<.GroupBy>>) (rate(nv_inference_request_success{<<.LabelMatchers>>}[1m])), 1)
+    - seriesQuery: 'vllm:num_requests_waiting{namespace!="",pod!=""}'
+      resources: {overrides: {namespace: {resource: namespace}, pod: {resource: pod}}}
+      name: {as: "vllm_num_requests_waiting"}
+      metricsQuery: 'avg by (<<.GroupBy>>) (vllm:num_requests_waiting{<<.LabelMatchers>>})'

@@ -1,0 +1,92 @@
+# vLLM OpenAI-compatible server. Continuous batching + PagedAttention give it far
+# higher token throughput than naive generate() loops; the knobs below trade
+# memory headroom for concurrency.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: inference
+  labels: {app: vllm}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
+  selector:
+    matchLabels: {app: vllm}
+  template:
+    metadata:
+      labels: {app: vllm}
+    spec:
+      nodeSelector: {workload: gpu}
+      tolerations:
+        - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.8.5
+          args:
+            - --model=Qwen/Qwen2.5-7B-Instruct
+            - --served-model-name=qwen2.5-7b
+            - --dtype=bfloat16
+            - --max-model-len=8192
+            - --gpu-memory-utilization=0.90   # KV cache gets what the weights leave
+            - --max-num-seqs=256              # concurrent sequences in the continuous batch
+            - --enable-prefix-caching         # reuse KV for shared system prompts
+            - --disable-log-requests
+          env:
+            - name: HF_TOKEN
+              valueFrom: {secretKeyRef: {name: hf-token, key: token, optional: true}}
+          ports: [{name: http, containerPort: 8000}]
+          resources:
+            requests: {cpu: "4", memory: 24Gi, nvidia.com/gpu: 1}
+            limits: {cpu: "8", memory: 32Gi, nvidia.com/gpu: 1}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 90             # weight download + CUDA graph capture
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 15
+            failureThreshold: 4
+          volumeMounts:
+            - {name: dshm, mountPath: /dev/shm}
+            - {name: hf-cache, mountPath: /root/.cache/huggingface}
+      volumes:
+        - name: dshm
+          emptyDir: {medium: Memory, sizeLimit: 8Gi}
+        - name: hf-cache
+          persistentVolumeClaim: {claimName: hf-cache}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: vllm, namespace: inference, labels: {app: vllm}}
+spec:
+  selector: {app: vllm}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: hf-cache, namespace: inference}
+spec:
+  accessModes: [ReadWriteMany]     # EFS: every replica shares one copy of the weights
+  storageClassName: efs-sc
+  resources: {requests: {storage: 100Gi}}
+---
+# Scale on requests waiting for a slot in the continuous batch.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: vllm, namespace: inference}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: vllm}
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Pods
+      pods:
+        metric: {name: vllm_num_requests_waiting}
+        target: {type: AverageValue, averageValue: "10"}
+  behavior:
+    scaleDown: {stabilizationWindowSeconds: 600}

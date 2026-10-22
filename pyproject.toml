@@ -1,0 +1,18 @@
+[project]
+name = "ml-inference-platform"
+version = "1.0.0"
+description = "vLLM + Triton inference platform on Kubernetes with INT8 quantization, autoscaling and blue/green deploys"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]

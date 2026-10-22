@@ -1,0 +1,8 @@
+# Same recording rules as k8s/monitoring/alerts.yaml, in plain Prometheus format for docker compose.
+groups:
+  - name: inference.slo
+    rules:
+      - record: gateway:request_error_ratio:rate5m
+        expr: sum(rate(gateway_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(gateway_requests_total[5m])), 1)
+      - record: gateway:predict_latency_p99:rate5m
+        expr: histogram_quantile(0.99, sum by (le, model) (rate(gateway_request_seconds_bucket{route="predict"}[5m])))

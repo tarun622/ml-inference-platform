@@ -1,0 +1,44 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata: {name: inference-slo, namespace: inference, labels: {release: kube-prometheus-stack}}
+spec:
+  groups:
+    - name: inference.slo
+      rules:
+        - record: gateway:request_error_ratio:rate5m
+          expr: |
+            sum(rate(gateway_requests_total{status=~"5.."}[5m]))
+              / clamp_min(sum(rate(gateway_requests_total[5m])), 1)
+        - record: gateway:predict_latency_p99:rate5m
+          expr: histogram_quantile(0.99, sum by (le, model) (rate(gateway_request_seconds_bucket{route="predict"}[5m])))
+
+        - alert: InferenceErrorRateHigh
+          expr: gateway:request_error_ratio:rate5m > 0.01
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: "Gateway 5xx ratio above 1% for 5 minutes"
+        - alert: TabularP99LatencyHigh
+          expr: gateway:predict_latency_p99:rate5m > 0.15
+          for: 10m
+          labels: {severity: page}
+          annotations:
+            summary: "p99 latency for {{ $labels.model }} above 150ms"
+        - alert: GatewayShedding
+          expr: sum(rate(gateway_shed_total[5m])) > 0
+          for: 5m
+          labels: {severity: warn}
+          annotations:
+            summary: "Gateway is rejecting requests with 429; scale-out is lagging"
+        - alert: VLLMQueueBuilding
+          expr: avg(vllm:num_requests_waiting) > 25
+          for: 5m
+          labels: {severity: warn}
+          annotations:
+            summary: "vLLM requests waiting for a batch slot"
+        - alert: TritonInferenceFailures
+          expr: sum by (model) (rate(nv_inference_request_failure[5m])) > 0.1
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: "Triton failing requests for {{ $labels.model }}"

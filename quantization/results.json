@@ -1,0 +1,70 @@
+{
+  "machine": {
+    "cpu": "x86_64",
+    "cores": 2,
+    "threads": 1,
+    "onnxruntime": "1.29.0"
+  },
+  "models": {
+    "digits_mlp": {
+      "fp32": {
+        "size_mb": 0.671,
+        "f1": 0.9719,
+        "p50_us": 17.5,
+        "p99_us": 46.4,
+        "rows_per_s_batch256": 342741
+      },
+      "int8": {
+        "size_mb": 0.178,
+        "f1": 0.9719,
+        "p50_us": 20.1,
+        "p99_us": 52.6,
+        "rows_per_s_batch256": 749505
+      },
+      "size_reduction_x": 3.77,
+      "f1_delta_points": 0.0,
+      "prediction_agreement": 1.0,
+      "batched_speedup_x": 2.19
+    },
+    "fraud_mlp": {
+      "fp32": {
+        "size_mb": 1.663,
+        "f1": 0.9293,
+        "p50_us": 45.8,
+        "p99_us": 102.7,
+        "rows_per_s_batch256": 144989
+      },
+      "int8": {
+        "size_mb": 0.431,
+        "f1": 0.9287,
+        "p50_us": 27.7,
+        "p99_us": 59.1,
+        "rows_per_s_batch256": 564343
+      },
+      "size_reduction_x": 3.86,
+      "f1_delta_points": -0.06,
+      "prediction_agreement": 1.0,
+      "batched_speedup_x": 3.89
+    },
+    "risk_mlp": {
+      "fp32": {
+        "size_mb": 0.166,
+        "f1": 0.9452,
+        "p50_us": 13.0,
+        "p99_us": 32.2,
+        "rows_per_s_batch256": 1178569
+      },
+      "int8": {
+        "size_mb": 0.048,
+        "f1": 0.9452,
+        "p50_us": 15.7,
+        "p99_us": 33.8,
+        "rows_per_s_batch256": 1663466
+      },
+      "size_reduction_x": 3.46,
+      "f1_delta_points": 0.0,
+      "prediction_agreement": 1.0,
+      "batched_speedup_x": 1.41
+    }
+  }
+}

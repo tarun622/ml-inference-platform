@@ -1,0 +1,8 @@
+-r gateway/requirements.txt
+scikit-learn>=1.4
+skl2onnx>=1.16
+onnx>=1.16
+pytest>=8
+anyio>=4
+ruff>=0.5
+locust>=2.25

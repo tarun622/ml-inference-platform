@@ -1,0 +1,58 @@
+# Rendered by scripts/blue_green.sh with COLOR=blue|green and the image/model repo to deploy.
+# Two of these exist side by side; the `triton` Service selects one colour at a time.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triton-${COLOR}
+  namespace: inference
+  labels: {app: triton, color: ${COLOR}}
+  annotations:
+    inference/model-repository: ${MODEL_REPOSITORY}
+spec:
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels: {app: triton, color: ${COLOR}}
+  template:
+    metadata:
+      labels: {app: triton, color: ${COLOR}}
+    spec:
+      serviceAccountName: triton
+      nodeSelector: {workload: gpu}
+      tolerations:
+        - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      containers:
+        - name: triton
+          image: nvcr.io/nvidia/tritonserver:${TRITON_VERSION}-py3
+          args:
+            - tritonserver
+            - --model-repository=${MODEL_REPOSITORY}
+            - --model-control-mode=none
+            - --strict-readiness=true        # not ready until every model has loaded and warmed up
+            - --exit-on-error=true
+            - --allow-metrics=true
+            - --metrics-interval-ms=2000
+          env:
+            - {name: AWS_REGION, value: us-east-1}
+          ports:
+            - {name: http, containerPort: 8000}
+            - {name: grpc, containerPort: 8001}
+            - {name: metrics, containerPort: 8002}
+          resources:
+            requests: {cpu: "2", memory: 8Gi, nvidia.com/gpu: 1}
+            limits: {cpu: "4", memory: 12Gi, nvidia.com/gpu: 1}
+          startupProbe:
+            httpGet: {path: /v2/health/ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 120          # TensorRT engine builds can take minutes on first start
+          readinessProbe:
+            httpGet: {path: /v2/health/ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: {path: /v2/health/live, port: http}
+            periodSeconds: 10
+          volumeMounts:
+            - {name: dshm, mountPath: /dev/shm}
+      volumes:
+        - name: dshm
+          emptyDir: {medium: Memory, sizeLimit: 2Gi}

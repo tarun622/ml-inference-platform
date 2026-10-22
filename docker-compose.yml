@@ -1,0 +1,51 @@
+# Local stack. CPU-only by default:
+#   make models && make cpu-repo && docker compose up --build
+# With an NVIDIA GPU, add vLLM:
+#   docker compose --profile gpu up --build
+services:
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.08-py3
+    command: tritonserver --model-repository=/models --strict-readiness=true --allow-metrics=true
+    volumes: ["./build/model_repository_cpu:/models:ro"]
+    ports: ["8000:8000", "8001:8001", "8002:8002"]
+    shm_size: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "localhost:8000/v2/health/ready"]
+      interval: 5s
+      retries: 60
+
+  gateway:
+    build: {context: ., dockerfile: gateway/Dockerfile}
+    environment:
+      TRITON_URL: http://triton:8000
+      VLLM_URL: ${VLLM_URL:-}
+      WORKERS: "4"
+    ports: ["8080:8080"]
+    depends_on:
+      triton: {condition: service_healthy}
+
+  vllm:
+    profiles: [gpu]
+    image: vllm/vllm-openai:v0.8.5
+    command: --model Qwen/Qwen2.5-1.5B-Instruct --served-model-name qwen2.5-1.5b --max-model-len 4096 --gpu-memory-utilization 0.85
+    ports: ["8100:8000"]
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules.yml:/etc/prometheus/rules.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment: {GF_AUTH_ANONYMOUS_ENABLED: "true", GF_AUTH_ANONYMOUS_ORG_ROLE: Admin}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/inference-dashboard.json:/var/lib/grafana/dashboards/inference.json:ro
+    ports: ["3000:3000"]

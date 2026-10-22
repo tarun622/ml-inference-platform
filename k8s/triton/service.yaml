@@ -1,0 +1,30 @@
+# The live service. scripts/blue_green.sh flips spec.selector.color after the
+# idle colour passes readiness and smoke tests. The previous colour is kept
+# running for instant rollback.
+apiVersion: v1
+kind: Service
+metadata:
+  name: triton
+  namespace: inference
+  labels: {app: triton}
+spec:
+  selector: {app: triton, color: blue}
+  ports:
+    - {name: http, port: 8000, targetPort: http}
+    - {name: grpc, port: 8001, targetPort: grpc}
+    - {name: metrics, port: 8002, targetPort: metrics}
+---
+# Stable per-colour services so the deploy script can smoke-test the idle colour directly.
+apiVersion: v1
+kind: Service
+metadata: {name: triton-blue, namespace: inference}
+spec:
+  selector: {app: triton, color: blue}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: triton-green, namespace: inference}
+spec:
+  selector: {app: triton, color: green}
+  ports: [{name: http, port: 8000, targetPort: http}]

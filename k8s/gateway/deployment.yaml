@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: inference
+  labels: {app: gateway}
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 2, maxUnavailable: 0}
+  selector:
+    matchLabels: {app: gateway}
+  template:
+    metadata:
+      labels: {app: gateway}
+    spec:
+      nodeSelector: {workload: cpu}
+      topologySpreadConstraints:
+        - {maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: {matchLabels: {app: gateway}}}
+      containers:
+        - name: gateway
+          image: ghcr.io/tarun622/ml-inference-platform/gateway:1.0.0
+          env:
+            - {name: TRITON_URL, value: "http://triton.inference.svc.cluster.local:8000"}
+            - {name: VLLM_URL, value: "http://vllm.inference.svc.cluster.local:8000"}
+            - {name: MODEL_REPOSITORY, value: /app/model_repository}
+            - {name: MAX_IN_FLIGHT, value: "1024"}
+            - {name: WORKERS, value: "4"}
+            - {name: TRAFFIC_SPLIT, value: '{}'}
+          ports: [{name: http, containerPort: 8080}]
+          resources:
+            requests: {cpu: "1", memory: 512Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          lifecycle:
+            preStop: {exec: {command: ["sleep", "10"]}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: gateway, namespace: inference, labels: {app: gateway}}
+spec:
+  selector: {app: gateway}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: gateway, namespace: inference}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: gateway}
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 60}}
+---
+# AWS Load Balancer Controller provisions an ALB for this.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway
+  namespace: inference
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - {path: /, pathType: Prefix, backend: {service: {name: gateway, port: {number: 80}}}}

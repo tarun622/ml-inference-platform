@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inference
+  labels:
+    monitoring: enabled
+---
+# IRSA service account: lets Triton read the model repository from S3 without static keys.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: triton
+  namespace: inference
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/triton-model-repo-read

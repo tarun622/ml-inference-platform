@@ -1,0 +1,37 @@
+# eksctl create cluster -f deploy/eks/cluster.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: inference
+  region: us-east-1
+  version: "1.30"
+
+iam:
+  withOIDC: true   # needed for IRSA (Triton reads models from S3)
+
+managedNodeGroups:
+  - name: cpu
+    instanceType: m6i.xlarge
+    minSize: 2
+    maxSize: 10
+    desiredCapacity: 3
+    labels: {workload: cpu}
+
+  - name: gpu-a10g
+    instanceType: g5.xlarge          # 1x NVIDIA A10G, 24 GB
+    amiFamily: AmazonLinux2          # EKS-optimised accelerated AMI with NVIDIA drivers
+    minSize: 2
+    maxSize: 12
+    desiredCapacity: 2
+    volumeSize: 200
+    labels: {workload: gpu}
+    taints:
+      - {key: nvidia.com/gpu, value: "true", effect: NoSchedule}
+    iam:
+      withAddonPolicies: {autoScaler: true, efs: true}
+
+addons:
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
+  - name: aws-efs-csi-driver

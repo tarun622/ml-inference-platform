@@ -1,0 +1,42 @@
+[
+  {
+    "concurrency": 1,
+    "batch": 1,
+    "requests": 20000,
+    "rps": 1274,
+    "p50_ms": 0.75,
+    "p95_ms": 1.14,
+    "p99_ms": 1.47,
+    "errors": 0
+  },
+  {
+    "concurrency": 16,
+    "batch": 1,
+    "requests": 20000,
+    "rps": 3063,
+    "p50_ms": 4.61,
+    "p95_ms": 8.92,
+    "p99_ms": 12.64,
+    "errors": 0
+  },
+  {
+    "concurrency": 64,
+    "batch": 1,
+    "requests": 20000,
+    "rps": 3387,
+    "p50_ms": 16.68,
+    "p95_ms": 28.27,
+    "p99_ms": 40.49,
+    "errors": 0
+  },
+  {
+    "concurrency": 256,
+    "batch": 1,
+    "requests": 20000,
+    "rps": 2921,
+    "p50_ms": 64.63,
+    "p95_ms": 102.35,
+    "p99_ms": 127.74,
+    "errors": 0
+  }
+]
