@@ -22,6 +22,7 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+import onnx
 from onnxruntime.quantization import (
     CalibrationDataReader,
     QuantFormat,
@@ -40,6 +41,19 @@ class NpzCalibrationReader(CalibrationDataReader):
         return next(self._batches, None)
 
 
+def _type_ml_ops(path: Path) -> None:
+    """ONNX shape inference can't type the output of skl2onnx's ai.onnx.ml Scaler, which leaves every tensor
+    downstream untyped and breaks quantization. Scaler always emits float, so declare that and re-infer."""
+    model = onnx.load(str(path))
+    typed = {vi.name for vi in model.graph.value_info if vi.type.tensor_type.elem_type}
+    for node in model.graph.node:
+        if node.domain == "ai.onnx.ml" and node.op_type == "Scaler" and node.output[0] not in typed:
+            model.graph.value_info.append(
+                onnx.helper.make_tensor_value_info(node.output[0], onnx.TensorProto.FLOAT, None)
+            )
+    onnx.save(onnx.shape_inference.infer_shapes(model), str(path))
+
+
 def quantize_model(model_dir: Path, mode: str = "dynamic") -> Path:
     fp32 = model_dir / "1" / "model.onnx"
     out_dir = model_dir / "2"
@@ -49,6 +63,7 @@ def quantize_model(model_dir: Path, mode: str = "dynamic") -> Path:
 
     # Shape inference + graph optimisation first; quantization works better on a cleaned graph.
     quant_pre_process(str(fp32), str(prep), skip_symbolic_shape=True)
+    _type_ml_ops(prep)
 
     if mode == "dynamic":
         quantize_dynamic(str(prep), str(int8), weight_type=QuantType.QInt8, per_channel=True)
